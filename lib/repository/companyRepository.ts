@@ -66,6 +66,5 @@ export function getHighRiskCompanies(): Company[] {
   );
 }
 
-export function getHiddenRiskCaseCompanies(): Company[] {
-  return companies.filter((c) => c.tags?.includes("HIDDEN_RISK_CASE"));
-}
+// Hidden-risk classification is computed, not tagged — see
+// lib/riskScan.ts's scanPortfolio()/getPriorityInvestigationCandidates().

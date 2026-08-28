@@ -31,10 +31,13 @@ import { getNewsByCompany } from "@/lib/repository/eventRepository";
 import { getRmNotesByCompany } from "@/lib/repository/noteRepository";
 import { formatEok, formatSignedScore } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getServerLocale } from "@/lib/i18n/getLocale";
+import { translations } from "@/lib/i18n/translations";
+import { scanCompany } from "@/lib/riskScan";
 
 const SENTIMENT_STYLE: Record<string, string> = {
-  NEGATIVE: "text-red-700",
-  POSITIVE: "text-slate-600",
+  NEGATIVE: "text-red-700 dark:text-red-400",
+  POSITIVE: "text-slate-600 dark:text-slate-400",
   NEUTRAL: "text-muted-foreground",
 };
 
@@ -44,6 +47,8 @@ export default async function CompanyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const locale = await getServerLocale();
+  const t = translations[locale];
   const company = getCompanyById(id);
   if (!company) notFound();
 
@@ -57,12 +62,15 @@ export default async function CompanyDetailPage({
   const notes = getRmNotesByCompany(id);
   const exposure = getCompanyExposure(id);
   const latestSignal = ewsSignals[ewsSignals.length - 1];
-  const isHiddenRiskCase = company.tags?.includes("HIDDEN_RISK_CASE") ?? false;
+  // Computed, not tagged — the same uniform scan used on the Dashboard
+  // (see lib/riskScan.ts) decides whether this borrower gets the guided
+  // "Hidden Risk" walkthrough treatment.
+  const isHiddenRiskCase = scanCompany(company).isPriorityCandidate;
   const hasDelinquency = loans.some((l) => l.delinquencyDays > 0);
 
   return (
     <div className="flex flex-col gap-6">
-      {isHiddenRiskCase && <DemoProgress active={[2, 3, 4]} />}
+      {isHiddenRiskCase && <DemoProgress active={[2, 3, 4]} steps={t.demoSteps} />}
 
       {/* Header: identification + credit status, condensed to a single record block */}
       <div className="border-b pb-4">
@@ -73,9 +81,9 @@ export default async function CompanyDetailPage({
               <span className="text-sm text-muted-foreground">{company.bizRegNo}</span>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {company.industry} · {company.region} · 대표 {company.ceoName} · 설립{" "}
-              {company.establishedYear} · 임직원 {company.employeeCount}명 · 신용등급{" "}
-              {company.creditRating}
+              {company.industry} · {company.region} · {t.company.ceoPrefix} {company.ceoName} ·{" "}
+              {t.company.establishedPrefix} {company.establishedYear} · {company.employeeCount}
+              {t.company.employeesSuffix} · {t.company.creditRatingPrefix} {company.creditRating}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <RiskLevelBadge level={company.currentEwsRiskLevel} />
@@ -86,31 +94,30 @@ export default async function CompanyDetailPage({
                     hasDelinquency ? "bg-red-600" : "bg-slate-400"
                   )}
                 />
-                {hasDelinquency ? "연체 발생" : "Performing (연체 없음)"}
+                {hasDelinquency ? t.company.delinquentStatus : t.company.performing}
               </span>
               {company.isWatchListed && (
                 <Badge variant="outline" className="font-normal">
-                  Watch List
+                  {t.company.watchList}
                 </Badge>
               )}
               {isHiddenRiskCase && (
                 <Badge variant="outline" className="font-normal text-muted-foreground">
-                  Hidden Risk Case
+                  {t.company.hiddenRiskCase}
                 </Badge>
               )}
             </div>
           </div>
           <Button
             nativeButton={false}
-            render={<Link href={`/investigation/${company.id}`}>왜 위험한가? →</Link>}
+            render={<Link href={`/investigation/${company.id}`}>{t.company.whyRisky}</Link>}
           />
         </div>
 
         {isHiddenRiskCase && !hasDelinquency && (
           <p id="normal-status" className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
             <StepBadge n={3} />
-            현재 정상 여신으로 관리되고 있으나, 아래 연결된 재무·거래·관계사 데이터에서 주의가
-            필요한 신호가 함께 나타납니다.
+            {t.company.normalStatusNote}
           </p>
         )}
       </div>
@@ -118,50 +125,55 @@ export default async function CompanyDetailPage({
       {/* Exposure & Loans */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Exposure &amp; 대출</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.company.exposureLoans.title}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-muted-foreground">당행 Exposure</p>
-              <p className="text-lg font-semibold tabular-nums">{formatEok(exposure)}</p>
+              <p className="text-muted-foreground">{t.company.exposureLoans.exposureLabel}</p>
+              <p className="text-lg font-semibold tabular-nums">{formatEok(exposure, locale)}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">대출 건수</p>
-              <p className="text-lg font-semibold tabular-nums">{loans.length}건</p>
+              <p className="text-muted-foreground">{t.company.exposureLoans.loanCountLabel}</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {loans.length}
+                {t.company.exposureLoans.loanCountUnit}
+              </p>
             </div>
             <div>
-              <p className="text-muted-foreground">수입 의존도</p>
+              <p className="text-muted-foreground">{t.company.exposureLoans.importDependency}</p>
               <p className="text-lg font-semibold tabular-nums">{company.importDependencyPct}%</p>
             </div>
           </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>상품</TableHead>
-                <TableHead className="text-right">원금</TableHead>
-                <TableHead className="text-right">잔액</TableHead>
-                <TableHead className="text-right">금리</TableHead>
-                <TableHead>담보</TableHead>
-                <TableHead className="text-right">연체</TableHead>
-                <TableHead>만기</TableHead>
+                <TableHead>{t.company.exposureLoans.columns.product}</TableHead>
+                <TableHead className="text-right">{t.company.exposureLoans.columns.principal}</TableHead>
+                <TableHead className="text-right">{t.company.exposureLoans.columns.balance}</TableHead>
+                <TableHead className="text-right">{t.company.exposureLoans.columns.rate}</TableHead>
+                <TableHead>{t.company.exposureLoans.columns.collateral}</TableHead>
+                <TableHead className="text-right">{t.company.exposureLoans.columns.delinquency}</TableHead>
+                <TableHead>{t.company.exposureLoans.columns.maturity}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loans.map((l) => (
                 <TableRow key={l.id}>
                   <TableCell>{l.productType}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatEok(l.principal)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatEok(l.principal, locale)}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatEok(l.outstandingBalance)}
+                    {formatEok(l.outstandingBalance, locale)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{l.interestRate}%</TableCell>
                   <TableCell>{l.collateralType}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {l.delinquencyDays > 0 ? (
-                      <span className="font-medium text-red-700">{l.delinquencyDays}일</span>
+                      <span className="font-medium text-red-700 dark:text-red-400">
+                        {l.delinquencyDays}
+                      </span>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground">{t.common.none}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{l.maturityDate}</TableCell>
@@ -177,7 +189,7 @@ export default async function CompanyDetailPage({
         <CardHeader>
           <CardTitle className="flex items-center text-sm font-medium">
             {isHiddenRiskCase && <StepBadge n={4} />}
-            EWS Risk Score
+            {t.company.ews.title}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -188,14 +200,15 @@ export default async function CompanyDetailPage({
             <RiskLevelBadge level={latestSignal?.riskLevel ?? company.currentEwsRiskLevel} />
             {latestSignal && (
               <span className="text-xs text-muted-foreground">
-                전기 대비 {formatSignedScore(latestSignal.scoreDelta)}점 · {latestSignal.signalDate}
+                {t.company.ews.deltaPrefix} {formatSignedScore(latestSignal.scoreDelta)}
+                {t.common.scoreUnit} · {latestSignal.signalDate}
               </span>
             )}
           </div>
           {ewsSignals.length > 0 ? (
             <EwsScoreChart signals={ewsSignals} />
           ) : (
-            <p className="text-sm text-muted-foreground">EWS 이력 데이터 없음</p>
+            <p className="text-sm text-muted-foreground">{t.company.ews.noHistory}</p>
           )}
         </CardContent>
       </Card>
@@ -203,7 +216,7 @@ export default async function CompanyDetailPage({
       {/* 재무제표 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">재무제표 (매출 / 매출채권 / 영업현금흐름)</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.company.financials.title}</CardTitle>
         </CardHeader>
         <CardContent>
           {financials.length > 0 ? (
@@ -212,12 +225,14 @@ export default async function CompanyDetailPage({
               <Table className="mt-4">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>기간</TableHead>
-                    <TableHead className="text-right">매출</TableHead>
-                    <TableHead className="text-right">매출채권</TableHead>
-                    <TableHead className="text-right">영업현금흐름</TableHead>
-                    <TableHead className="text-right">순이익</TableHead>
-                    <TableHead className="text-right">부채비율</TableHead>
+                    <TableHead>{t.company.financials.columns.period}</TableHead>
+                    <TableHead className="text-right">{t.company.financials.columns.revenue}</TableHead>
+                    <TableHead className="text-right">
+                      {t.company.financials.columns.receivables}
+                    </TableHead>
+                    <TableHead className="text-right">{t.company.financials.columns.cashFlow}</TableHead>
+                    <TableHead className="text-right">{t.company.financials.columns.netProfit}</TableHead>
+                    <TableHead className="text-right">{t.company.financials.columns.debtRatio}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -226,19 +241,19 @@ export default async function CompanyDetailPage({
                       <TableCell>
                         {f.fiscalYear} Q{f.quarter}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{formatEok(f.revenue)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatEok(f.revenue, locale)}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatEok(f.accountsReceivable)}
+                        {formatEok(f.accountsReceivable, locale)}
                       </TableCell>
                       <TableCell
                         className={cn(
                           "text-right tabular-nums",
-                          f.operatingCashFlow < 0 && "font-medium text-red-700"
+                          f.operatingCashFlow < 0 && "font-medium text-red-700 dark:text-red-400"
                         )}
                       >
-                        {formatEok(f.operatingCashFlow)}
+                        {formatEok(f.operatingCashFlow, locale)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{formatEok(f.netProfit)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatEok(f.netProfit, locale)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {f.debtRatio.toFixed(1)}%
                       </TableCell>
@@ -248,12 +263,12 @@ export default async function CompanyDetailPage({
               </Table>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">재무 데이터 없음</p>
+            <p className="text-sm text-muted-foreground">{t.company.financials.noData}</p>
           )}
           {isHiddenRiskCase && (
             <NextStepLink
               href={`/investigation/${company.id}#timeline`}
-              label="Risk Timeline에서 이 신호들이 어떻게 이어지는지 확인하기"
+              label={t.company.financials.nextTimelineLabel}
             />
           )}
         </CardContent>
@@ -262,47 +277,51 @@ export default async function CompanyDetailPage({
       {/* 거래 내역 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">거래 내역</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.company.transactions.title}</CardTitle>
         </CardHeader>
         <CardContent>
           {transactions.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>일자</TableHead>
-                  <TableHead>구분</TableHead>
-                  <TableHead>분류</TableHead>
-                  <TableHead className="text-right">금액</TableHead>
+                  <TableHead>{t.company.transactions.columns.date}</TableHead>
+                  <TableHead>{t.company.transactions.columns.type}</TableHead>
+                  <TableHead>{t.company.transactions.columns.category}</TableHead>
+                  <TableHead className="text-right">{t.company.transactions.columns.amount}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="text-muted-foreground">{t.date}</TableCell>
+                {transactions.map((tx) => (
+                  <TableRow key={tx.id}>
+                    <TableCell className="text-muted-foreground">{tx.date}</TableCell>
                     <TableCell
                       className={cn(
                         "font-medium",
-                        t.type === "INFLOW" ? "text-slate-700" : "text-muted-foreground"
+                        tx.type === "INFLOW"
+                          ? "text-slate-700 dark:text-slate-300"
+                          : "text-muted-foreground"
                       )}
                     >
-                      {t.type === "INFLOW" ? "입금" : "출금"}
+                      {tx.type === "INFLOW" ? t.company.transactions.inflow : t.company.transactions.outflow}
                     </TableCell>
-                    <TableCell>{t.category}</TableCell>
+                    <TableCell>{tx.category}</TableCell>
                     <TableCell
                       className={cn(
                         "text-right tabular-nums",
-                        t.type === "INFLOW" ? "text-slate-900" : "text-muted-foreground"
+                        tx.type === "INFLOW"
+                          ? "text-slate-900 dark:text-slate-100"
+                          : "text-muted-foreground"
                       )}
                     >
-                      {t.type === "INFLOW" ? "+" : "-"}
-                      {formatEok(t.amount)}
+                      {tx.type === "INFLOW" ? "+" : "-"}
+                      {formatEok(tx.amount, locale)}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           ) : (
-            <p className="text-sm text-muted-foreground">거래 데이터 없음</p>
+            <p className="text-sm text-muted-foreground">{t.company.transactions.noData}</p>
           )}
         </CardContent>
       </Card>
@@ -310,11 +329,13 @@ export default async function CompanyDetailPage({
       {/* 관계사 + 주요 거래처 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">관계사 / 주요 거래처</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.company.relations.title}</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">관계사</p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              {t.company.relations.relatedCompaniesLabel}
+            </p>
             {relations.length > 0 ? (
               <ul className="space-y-1.5">
                 {relations.map((r) => {
@@ -331,11 +352,13 @@ export default async function CompanyDetailPage({
                 })}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">관계사 데이터 없음</p>
+              <p className="text-sm text-muted-foreground">{t.company.relations.noRelated}</p>
             )}
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">주요 거래처</p>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              {t.company.relations.counterpartiesLabel}
+            </p>
             {counterparties.length > 0 ? (
               <ul className="space-y-1.5">
                 {counterparties.map((c) => (
@@ -351,11 +374,12 @@ export default async function CompanyDetailPage({
                       <span className="font-medium">{c.counterpartyName}</span>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {c.role === "CUSTOMER" ? "고객" : "공급처"} · 집중도{" "}
+                      {c.role === "CUSTOMER" ? t.common.customer : t.common.supplier} ·{" "}
+                      {t.company.relations.concentration}{" "}
                       <span
                         className={cn(
                           "tabular-nums",
-                          c.concentrationPct >= 35 && "font-semibold text-amber-700"
+                          c.concentrationPct >= 35 && "font-semibold text-amber-700 dark:text-amber-400"
                         )}
                       >
                         {c.concentrationPct}%
@@ -365,7 +389,7 @@ export default async function CompanyDetailPage({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">거래처 데이터 없음</p>
+              <p className="text-sm text-muted-foreground">{t.company.relations.noCounterparty}</p>
             )}
           </div>
         </CardContent>
@@ -375,7 +399,7 @@ export default async function CompanyDetailPage({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">외부 시그널 (News)</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.company.externalSignals.title}</CardTitle>
           </CardHeader>
           <CardContent>
             {news.length > 0 ? (
@@ -399,14 +423,14 @@ export default async function CompanyDetailPage({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">관련 뉴스 없음</p>
+              <p className="text-sm text-muted-foreground">{t.company.externalSignals.noNews}</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">담당자 메모</CardTitle>
+            <CardTitle className="text-sm font-medium">{t.company.rmNotes.title}</CardTitle>
           </CardHeader>
           <CardContent>
             {notes.length > 0 ? (
@@ -419,9 +443,9 @@ export default async function CompanyDetailPage({
                     </div>
                     <p>{n.note}</p>
                     <div className="mt-1 flex gap-1">
-                      {n.tags.map((t) => (
-                        <Badge key={t} variant="outline" className="text-xs font-normal">
-                          {t}
+                      {n.tags.map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs font-normal">
+                          {tag}
                         </Badge>
                       ))}
                     </div>
@@ -429,7 +453,7 @@ export default async function CompanyDetailPage({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">담당자 메모 없음</p>
+              <p className="text-sm text-muted-foreground">{t.company.rmNotes.noNotes}</p>
             )}
           </CardContent>
         </Card>

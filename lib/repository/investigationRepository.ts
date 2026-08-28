@@ -16,6 +16,8 @@ import type {
   ExternalEvent,
   FinancialStatement,
   Investigation,
+  InvestigationFindingType,
+  InvestigationStatus,
   Loan,
   RmNote,
   RiskTimelineEvent,
@@ -49,6 +51,55 @@ export function createInvestigation(input: {
   };
   store.investigations.push(investigation);
   return investigation;
+}
+
+// The only allowed forward transitions — OPEN -> IN_PROGRESS -> CLOSED, no
+// skipping a step and no going back, matching a real credit-review
+// process's sign-off order.
+const ALLOWED_NEXT_STATUS: Record<InvestigationStatus, InvestigationStatus[]> = {
+  OPEN: ["IN_PROGRESS"],
+  IN_PROGRESS: ["CLOSED"],
+  CLOSED: [],
+};
+
+// Applies a status transition if (and only if) it's the allowed next step.
+// Closing additionally requires a finding type + final judgment — those are
+// already `required` on the closing form, but this is the server-side
+// backstop that actually withholds the write if either is missing, rather
+// than trusting the client. Returns the investigation unchanged (not an
+// error) if the transition or the required fields are invalid — this mock
+// backend has no error-surfacing channel beyond the confirmation banner the
+// caller already redirects to, so an invalid attempt is simply a no-op.
+export function updateInvestigationStatus(input: {
+  investigationId: string;
+  status: InvestigationStatus;
+  findingType?: InvestigationFindingType;
+  findings?: string;
+  finalJudgment?: string;
+  closedBy?: string;
+}): Investigation | undefined {
+  const investigation = getInvestigationById(input.investigationId);
+  if (!investigation) return undefined;
+  if (!ALLOWED_NEXT_STATUS[investigation.status].includes(input.status)) return investigation;
+  if (input.status === "CLOSED" && (!input.findingType || !input.finalJudgment?.trim())) {
+    return investigation;
+  }
+
+  investigation.status = input.status;
+  if (input.findingType) investigation.findingType = input.findingType;
+  if (input.findings !== undefined) investigation.findings = input.findings;
+  if (input.finalJudgment !== undefined) investigation.finalJudgment = input.finalJudgment;
+  if (input.status === "CLOSED") {
+    investigation.closedDate = DEMO_TODAY;
+    investigation.closedBy = input.closedBy;
+  }
+  return investigation;
+}
+
+export function getInvestigationStatusCounts(): Record<InvestigationStatus, number> {
+  const counts: Record<InvestigationStatus, number> = { OPEN: 0, IN_PROGRESS: 0, CLOSED: 0 };
+  for (const investigation of store.investigations) counts[investigation.status]++;
+  return counts;
 }
 
 export function getRiskTimeline(companyId: string): RiskTimelineEvent[] {

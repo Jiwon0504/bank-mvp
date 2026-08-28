@@ -6,19 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { RiskLevelBadge } from "@/components/shared/RiskLevelBadge";
 import { formatEok } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import type { Company, RiskTimelineEvent } from "@/lib/types";
 import type { ResolvedTimelineEvidence } from "@/lib/repository/investigationRepository";
-
-const CATEGORY_LABELS: Record<string, string> = {
-  LOAN: "대출",
-  FINANCIAL: "재무",
-  TRANSACTION: "거래",
-  RELATED_PARTY: "관계사",
-  EXTERNAL_EVENT: "외부 Event",
-  INVESTIGATION: "Investigation",
-  EWS: "EWS",
-  RM_NOTE: "담당자 메모",
-};
+import type { Dictionary } from "@/lib/i18n/translations";
 
 export interface TimelineItem {
   event: RiskTimelineEvent;
@@ -26,12 +17,16 @@ export interface TimelineItem {
   relatedCompanyDetails: Array<{ company: Company; exposure: number }>;
 }
 
+type TimelineDict = Dictionary["investigation"]["timeline"];
+
 // A click-to-expand timeline: selecting an entry reveals the real records
 // (loan terms, transaction amounts, financial figures, related-company
 // exposure) that entry is actually about, resolved server-side in
 // investigationRepository.resolveTimelineEvidence — not new prose.
-export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
+export function RiskTimelineInteractive({ items, t }: { items: TimelineItem[]; t: TimelineDict }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { locale } = useLanguage();
+  const categoryLabels = t.categories;
 
   return (
     <ol className="space-y-1 border-l-2 border-dashed pl-6">
@@ -49,13 +44,13 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="tabular-nums">{event.date}</span>
                 <Badge variant="outline" className="text-xs font-normal">
-                  {CATEGORY_LABELS[event.category] ?? event.category}
+                  {categoryLabels[event.category] ?? event.category}
                 </Badge>
               </div>
               <p className="flex items-center justify-between gap-2">
                 <span className="font-medium">{event.label}</span>
                 <span className="text-xs text-muted-foreground">
-                  {isSelected ? "근거 숨기기 ▲" : "근거 보기 ▼"}
+                  {isSelected ? t.hideEvidence : t.showEvidence}
                 </span>
               </p>
               <p className="text-sm text-muted-foreground">{event.description}</p>
@@ -64,21 +59,22 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
             {isSelected && (
               <div className="mt-2 space-y-3 rounded-md border bg-muted/20 p-3 text-sm">
                 <p className="text-muted-foreground">
-                  <span className="font-medium text-foreground">왜 Risk Signal과 연결되는가 — </span>
+                  <span className="font-medium text-foreground">{t.whyConnected}</span>
                   {event.whyItMatters}
                 </p>
 
                 {evidence.loans.length > 0 && (
                   <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">관련 대출</p>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">{t.relatedLoans}</p>
                     <ul className="space-y-1">
                       {evidence.loans.map((l) => (
                         <li key={l.id} className="flex items-center justify-between">
                           <span>
-                            {l.productType} · 실행일 {l.startDate}
+                            {l.productType} · {t.executedOn} {l.startDate}
                           </span>
                           <span className="tabular-nums">
-                            잔액 {formatEok(l.outstandingBalance)} (원금 {formatEok(l.principal)})
+                            {t.balanceLabel} {formatEok(l.outstandingBalance, locale)} ({t.principalLabel}{" "}
+                            {formatEok(l.principal, locale)})
                           </span>
                         </li>
                       ))}
@@ -89,20 +85,29 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
                 {evidence.financialStatement && (
                   <div>
                     <p className="mb-1 text-xs font-medium text-muted-foreground">
-                      재무제표 {evidence.financialStatement.fiscalYear} Q{evidence.financialStatement.quarter}
+                      {t.financialStatement} {evidence.financialStatement.fiscalYear} Q
+                      {evidence.financialStatement.quarter}
                     </p>
                     <div className="grid grid-cols-2 gap-1 tabular-nums sm:grid-cols-4">
-                      <span>매출 {formatEok(evidence.financialStatement.revenue)}</span>
-                      <span>매출채권 {formatEok(evidence.financialStatement.accountsReceivable)}</span>
+                      <span>
+                        {t.financialLabels.revenue} {formatEok(evidence.financialStatement.revenue, locale)}
+                      </span>
+                      <span>
+                        {t.financialLabels.receivables}{" "}
+                        {formatEok(evidence.financialStatement.accountsReceivable, locale)}
+                      </span>
                       <span
                         className={cn(
                           evidence.financialStatement.operatingCashFlow < 0 &&
-                            "font-medium text-red-700"
+                            "font-medium text-red-700 dark:text-red-400"
                         )}
                       >
-                        영업현금흐름 {formatEok(evidence.financialStatement.operatingCashFlow)}
+                        {t.financialLabels.cashFlow}{" "}
+                        {formatEok(evidence.financialStatement.operatingCashFlow, locale)}
                       </span>
-                      <span>순이익 {formatEok(evidence.financialStatement.netProfit)}</span>
+                      <span>
+                        {t.financialLabels.netProfit} {formatEok(evidence.financialStatement.netProfit, locale)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -110,18 +115,18 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
                 {evidence.transactions.length > 0 && (
                   <div>
                     <p className="mb-1 text-xs font-medium text-muted-foreground">
-                      관련 거래 (거래일 · 금액) — 합계{" "}
-                      <span className="tabular-nums">{formatEok(evidence.totalTransactionAmount)}</span>
+                      {t.relatedTransactions}{" "}
+                      <span className="tabular-nums">{formatEok(evidence.totalTransactionAmount, locale)}</span>
                     </p>
                     <ul className="space-y-1">
-                      {evidence.transactions.map((t) => (
-                        <li key={t.id} className="flex items-center justify-between">
+                      {evidence.transactions.map((tx) => (
+                        <li key={tx.id} className="flex items-center justify-between">
                           <span>
-                            {t.date} · {t.category}
+                            {tx.date} · {tx.category}
                           </span>
                           <span className="tabular-nums">
-                            {t.type === "INFLOW" ? "+" : "-"}
-                            {formatEok(t.amount)}
+                            {tx.type === "INFLOW" ? "+" : "-"}
+                            {formatEok(tx.amount, locale)}
                           </span>
                         </li>
                       ))}
@@ -131,7 +136,9 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
 
                 {relatedCompanyDetails.length > 0 && (
                   <div>
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">관련 회사 · Exposure</p>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">
+                      {t.relatedCompaniesExposure}
+                    </p>
                     <ul className="space-y-1">
                       {relatedCompanyDetails.map(({ company, exposure }) => (
                         <li key={company.id} className="flex items-center justify-between">
@@ -140,7 +147,7 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
                           </Link>
                           <span className="flex items-center gap-2">
                             <RiskLevelBadge level={company.currentEwsRiskLevel} />
-                            <span className="tabular-nums">{formatEok(exposure)}</span>
+                            <span className="tabular-nums">{formatEok(exposure, locale)}</span>
                           </span>
                         </li>
                       ))}
@@ -150,7 +157,7 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
 
                 {evidence.externalEvent && (
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground">외부 Event</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t.externalEvent}</p>
                     <p className="font-medium">{evidence.externalEvent.title}</p>
                     <p className="text-xs text-muted-foreground">{evidence.externalEvent.description}</p>
                   </div>
@@ -158,7 +165,7 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
 
                 {evidence.investigation && (
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground">Investigation</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t.investigationLabel}</p>
                     <p>
                       {evidence.investigation.id} · {evidence.investigation.status} ·{" "}
                       {evidence.investigation.createdBy}
@@ -170,7 +177,7 @@ export function RiskTimelineInteractive({ items }: { items: TimelineItem[] }) {
                 {evidence.rmNote && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">
-                      담당자 메모 ({evidence.rmNote.authorName}, {evidence.rmNote.createdDate})
+                      {t.rmNote} ({evidence.rmNote.authorName}, {evidence.rmNote.createdDate})
                     </p>
                     <p>{evidence.rmNote.note}</p>
                   </div>

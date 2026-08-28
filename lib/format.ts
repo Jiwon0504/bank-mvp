@@ -4,8 +4,17 @@
 
 // Money fields are stored in KRW millions (see lib/types.ts). Corporate
 // lending in Korean banking is conventionally discussed in 억원 (100M KRW),
-// not 백만원, so that is the default display unit.
-export function formatEok(millions: number): string {
+// not 백만원, so that is the default (Korean) display unit. In English,
+// there's no equivalent round unit, so it's shown directly in KRW millions
+// instead of forcing a literal "억원" onto an otherwise-English screen.
+// Defaults to "ko" so call sites that intentionally stay Korean regardless
+// of UI language (e.g. the generated risk-analysis prose) don't need to
+// pass anything.
+export function formatEok(millions: number, locale: "ko" | "en" = "ko"): string {
+  if (locale === "en") {
+    const sign = millions < 0 ? "-" : "";
+    return `${sign}KRW ${Math.abs(millions).toLocaleString("en-US")}M`;
+  }
   const eok = millions / 100;
   const sign = eok < 0 ? "-" : "";
   return `${sign}${Math.abs(eok).toLocaleString("ko-KR", {

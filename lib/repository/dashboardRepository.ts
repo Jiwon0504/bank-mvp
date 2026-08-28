@@ -1,13 +1,9 @@
-import {
-  getAllCompanies,
-  getCompanyExposure,
-  getHighRiskCompanies,
-  getHiddenRiskCaseCompanies,
-} from "./companyRepository";
-import { getAllInvestigations } from "./investigationRepository";
+import { getAllCompanies, getCompanyExposure, getHighRiskCompanies } from "./companyRepository";
+import { getAllInvestigations, getInvestigationStatusCounts } from "./investigationRepository";
 import { ewsSignals } from "@/data/ewsSignals";
 import { isWithinDays } from "@/lib/constants";
-import type { Company, Industry, Region } from "@/lib/types";
+import { scanPortfolio, getPriorityInvestigationCandidates, type CompanyRiskScan } from "@/lib/riskScan";
+import type { Company, Industry, InvestigationStatus, Region } from "@/lib/types";
 
 export interface DistributionBucket {
   key: string;
@@ -22,9 +18,16 @@ export interface DashboardSummary {
   highRiskBorrowers: number;
   newRiskSignals: number;
   investigationsInProgress: number;
+  /** OPEN/IN_PROGRESS/CLOSED counts across every Investigation ever opened. */
+  investigationStatusCounts: Record<InvestigationStatus, number>;
   industryDistribution: DistributionBucket[];
   regionDistribution: DistributionBucket[];
-  hiddenRiskCases: Company[];
+  /** Every borrower, scanned with the same uniform Risk Signal logic. */
+  portfolioScan: CompanyRiskScan[];
+  /** Connected-signal count summed across the whole portfolio. */
+  detectedSignalCount: number;
+  /** Borrowers where the connected view is more severe than EWS currently shows. */
+  priorityCandidates: CompanyRiskScan[];
 }
 
 function buildDistribution<K extends string>(
@@ -61,12 +64,17 @@ export function getDashboardSummary(): DashboardSummary {
     (i) => i.status === "OPEN" || i.status === "IN_PROGRESS"
   ).length;
 
+  const portfolioScan = scanPortfolio();
+  const detectedSignalCount = portfolioScan.reduce((sum, s) => sum + s.signals.length, 0);
+  const priorityCandidates = getPriorityInvestigationCandidates(portfolioScan);
+
   return {
     totalExposure,
     totalBorrowers: companies.length,
     highRiskBorrowers: getHighRiskCompanies().length,
     newRiskSignals,
     investigationsInProgress,
+    investigationStatusCounts: getInvestigationStatusCounts(),
     industryDistribution: buildDistribution(
       companies,
       (c) => c.industry as Industry,
@@ -77,6 +85,8 @@ export function getDashboardSummary(): DashboardSummary {
       (c) => c.region as Region,
       (id) => exposureByCompany.get(id) ?? 0
     ),
-    hiddenRiskCases: getHiddenRiskCaseCompanies(),
+    portfolioScan,
+    detectedSignalCount,
+    priorityCandidates,
   };
 }

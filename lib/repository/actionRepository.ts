@@ -1,6 +1,6 @@
 import { store } from "./store";
 import { DEMO_TODAY } from "@/lib/constants";
-import type { Action, ActionType } from "@/lib/types";
+import type { Action, ActionStatus, ActionType } from "@/lib/types";
 
 export function getAllActions(): Action[] {
   return store.actions;
@@ -28,5 +28,21 @@ export function createAction(input: {
     note: input.note,
   };
   store.actions.push(action);
+  return action;
+}
+
+// PENDING -> IN_PROGRESS -> DONE, one step at a time — same linear,
+// no-skipping shape as the Investigation status lifecycle above.
+const ALLOWED_NEXT_ACTION_STATUS: Record<ActionStatus, ActionStatus[]> = {
+  PENDING: ["IN_PROGRESS"],
+  IN_PROGRESS: ["DONE"],
+  DONE: [],
+};
+
+export function updateActionStatus(actionId: string, status: ActionStatus): Action | undefined {
+  const action = store.actions.find((a) => a.id === actionId);
+  if (!action) return undefined;
+  if (!ALLOWED_NEXT_ACTION_STATUS[action.status].includes(status)) return action;
+  action.status = status;
   return action;
 }

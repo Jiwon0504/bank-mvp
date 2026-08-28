@@ -158,7 +158,6 @@ const scenarioCompanies: Company[] = [
     totalExposure: 7600, // = sum of LN-SRT-01/02 outstandingBalance (this bank's own book)
     importDependencyPct: 18,
     isWatchListed: false,
-    tags: ["HIDDEN_RISK_CASE"],
   },
   {
     id: SCENARIO_COMPANY_IDS.haneui,
@@ -175,7 +174,6 @@ const scenarioCompanies: Company[] = [
     totalExposure: 1320, // = LN-HN-01 outstandingBalance
     importDependencyPct: 12,
     isWatchListed: false,
-    tags: ["HIDDEN_RISK_CASE"],
   },
   {
     id: SCENARIO_COMPANY_IDS.cheongwoo,
@@ -192,7 +190,6 @@ const scenarioCompanies: Company[] = [
     totalExposure: 2600, // = LN-CW-01 outstandingBalance
     importDependencyPct: 22,
     isWatchListed: false,
-    tags: ["HIDDEN_RISK_CASE"],
   },
   {
     id: SCENARIO_COMPANY_IDS.dorae,
@@ -209,7 +206,11 @@ const scenarioCompanies: Company[] = [
     totalExposure: 2950, // = LN-DR-01 outstandingBalance
     importDependencyPct: 8,
     isWatchListed: false,
-    tags: ["HIDDEN_RISK_CASE", "UNDER_EXTERNAL_INVESTIGATION"],
+    // Not a "hidden risk" pre-classification — this is an independent fact
+    // (the external investigation event, EVT-003, is what references it);
+    // whether 도래컴퍼니 itself surfaces as a scan priority candidate is
+    // computed the same way as any other company (see lib/riskScan.ts).
+    tags: ["UNDER_EXTERNAL_INVESTIGATION"],
   },
 ];
 

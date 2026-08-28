@@ -14,8 +14,15 @@ function generateGenericFinancials(): FinancialStatement[] {
       [2026, 2],
     ] as const) {
       const revenue = intBetween(rng, 800, 12000);
-      const operatingProfit = Math.round(revenue * floatBetween(rng, 0.02, 0.12));
-      const netProfit = Math.round(operatingProfit * floatBetween(rng, 0.5, 0.9));
+      // floatBetween's default `decimals` is 1 — fine for wide ranges like
+      // debtRatio (40-220), but for a narrow margin range like 0.02-0.12 it
+      // rounds to just two buckets (0.0 or 0.1), which was silently forcing
+      // operatingProfit (and therefore netProfit/operatingCashFlow) to
+      // exactly 0 for roughly a third of all generic companies. Explicit
+      // higher precision here so every company gets a real, non-degenerate
+      // figure for the portfolio risk scan to reason about.
+      const operatingProfit = Math.round(revenue * floatBetween(rng, 0.02, 0.12, 3));
+      const netProfit = Math.round(operatingProfit * floatBetween(rng, 0.5, 0.9, 3));
       const totalAssets = intBetween(rng, revenue, revenue * 3);
       const debtRatio = floatBetween(rng, 40, 220);
       const totalEquity = Math.round(totalAssets / (1 + debtRatio / 100));
@@ -34,8 +41,8 @@ function generateGenericFinancials(): FinancialStatement[] {
         debtRatio,
         currentRatio: floatBetween(rng, 80, 180),
         interestCoverageRatio: floatBetween(rng, 0.8, 6),
-        accountsReceivable: Math.round(revenue * floatBetween(rng, 0.15, 0.3)),
-        operatingCashFlow: Math.round(operatingProfit * floatBetween(rng, 0.5, 1.1)),
+        accountsReceivable: Math.round(revenue * floatBetween(rng, 0.15, 0.3, 3)),
+        operatingCashFlow: Math.round(operatingProfit * floatBetween(rng, 0.5, 1.1, 3)),
       });
     }
   }

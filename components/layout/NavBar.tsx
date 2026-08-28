@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-
-const NAV_ITEMS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/events", label: "External Event Impact" },
-];
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 
 // Exact match for "/", prefix match for everything else, so nested routes
 // like /events/[id] still light up "External Event Impact".
@@ -18,10 +14,15 @@ function isActive(pathname: string, href: string): boolean {
 
 export function NavBar() {
   const pathname = usePathname();
+  const { t } = useLanguage();
+  const navItems = [
+    { href: "/", label: t.nav.dashboard },
+    { href: "/events", label: t.nav.events },
+  ];
 
   return (
     <nav className="flex gap-1 text-sm">
-      {NAV_ITEMS.map((item) => {
+      {navItems.map((item) => {
         const active = isActive(pathname, item.href);
         return (
           <Link

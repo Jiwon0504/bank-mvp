@@ -2,18 +2,19 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getAllExternalEvents, getCompaniesAffectedByEvent } from "@/lib/repository/eventRepository";
+import { getServerLocale } from "@/lib/i18n/getLocale";
+import { translations } from "@/lib/i18n/translations";
 
-export default function EventsPage() {
+export default async function EventsPage() {
+  const locale = await getServerLocale();
+  const t = translations[locale];
   const events = getAllExternalEvents();
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">External Event Impact</h1>
-        <p className="text-sm text-muted-foreground">
-          외부 이벤트를 선택하면 영향을 받을 가능성이 있는 산업/차주를 보여줍니다 (예: 환율 상승 →
-          수입 의존 산업 → 해당 차주 → 예상 Risk Signal)
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight">{t.events.title}</h1>
+        <p className="text-sm text-muted-foreground">{t.events.subtitle}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -42,10 +43,12 @@ export default function EventsPage() {
                   ))}
                 </div>
                 <p className="text-sm font-medium tabular-nums">
-                  영향 가능 차주: {affected.length}개사
+                  {t.events.affectedCountPrefix}
+                  {affected.length}
+                  {t.events.affectedCountSuffix}
                 </p>
                 <Link href={`/events/${event.id}`} className="text-sm font-medium hover:underline">
-                  영향받는 차주 보기 →
+                  {t.events.viewAffected}
                 </Link>
               </CardContent>
             </Card>

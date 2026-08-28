@@ -17,6 +17,8 @@ import {
 } from "@/lib/repository/eventRepository";
 import { getCompanyExposure } from "@/lib/repository/companyRepository";
 import { formatEok } from "@/lib/format";
+import { getServerLocale } from "@/lib/i18n/getLocale";
+import { translations } from "@/lib/i18n/translations";
 
 export default async function EventDetailPage({
   params,
@@ -24,6 +26,8 @@ export default async function EventDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const locale = await getServerLocale();
+  const t = translations[locale];
   const event = getExternalEventById(id);
   if (!event) notFound();
 
@@ -36,7 +40,7 @@ export default async function EventDetailPage({
       <div>
         <p className="text-sm text-muted-foreground">
           <Link href="/events" className="hover:underline">
-            ← External Event Impact
+            {t.events.detail.back}
           </Link>
         </p>
         <h1 className="text-xl font-semibold tracking-tight">{event.title}</h1>
@@ -47,7 +51,7 @@ export default async function EventDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">이벤트 설명</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.events.detail.descriptionTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm">{event.description}</p>
@@ -63,21 +67,23 @@ export default async function EventDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">영향 가능 차주 ({affected.length}개사)</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            이벤트 영향 산업에 속한 차주 목록입니다. 실제 영향 여부는 개별 확인이 필요합니다.
-          </p>
+          <CardTitle className="text-sm font-medium">
+            {t.events.detail.affectedTitlePrefix}
+            {affected.length}
+            {t.events.detail.affectedTitleSuffix}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">{t.events.detail.affectedSubtitle}</p>
         </CardHeader>
         <CardContent>
           {affected.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>기업명</TableHead>
-                  <TableHead>산업</TableHead>
-                  <TableHead className="text-right">수입 의존도</TableHead>
-                  <TableHead>EWS Risk</TableHead>
-                  <TableHead className="text-right">Exposure</TableHead>
+                  <TableHead>{t.events.detail.columns.company}</TableHead>
+                  <TableHead>{t.events.detail.columns.industry}</TableHead>
+                  <TableHead className="text-right">{t.events.detail.columns.importDependency}</TableHead>
+                  <TableHead>{t.events.detail.columns.ewsRisk}</TableHead>
+                  <TableHead className="text-right">{t.events.detail.columns.exposure}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -93,11 +99,11 @@ export default async function EventDetailPage({
                       <RiskLevelBadge level={c.currentEwsRiskLevel} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatEok(c.exposure)}
+                      {formatEok(c.exposure, locale)}
                     </TableCell>
                     <TableCell>
                       <Link href={`/companies/${c.id}`} className="text-sm font-medium hover:underline">
-                        상세보기 →
+                        {t.common.detail}
                       </Link>
                     </TableCell>
                   </TableRow>
@@ -105,7 +111,7 @@ export default async function EventDetailPage({
               </TableBody>
             </Table>
           ) : (
-            <p className="text-sm text-muted-foreground">영향받는 차주가 없습니다.</p>
+            <p className="text-sm text-muted-foreground">{t.events.detail.noAffected}</p>
           )}
         </CardContent>
       </Card>

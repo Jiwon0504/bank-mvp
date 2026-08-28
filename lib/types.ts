@@ -41,7 +41,11 @@ export interface Company {
   totalExposure: number; // KRW, in millions
   importDependencyPct: number; // 0-100, used for FX event impact demo
   isWatchListed: boolean;
-  tags?: string[]; // e.g. ["HIDDEN_RISK_CASE"] — demo-only markers, not a real risk field
+  // Free-form factual markers (e.g. "UNDER_EXTERNAL_INVESTIGATION") — never
+  // a risk pre-classification. Whether a company is a "hidden risk"
+  // priority candidate is always computed from its actual data, not
+  // tagged; see lib/riskScan.ts.
+  tags?: string[];
 }
 
 export interface Loan {
@@ -167,6 +171,14 @@ export interface RmAssessment {
 
 export type InvestigationStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
 
+// Fixed classification the RM assigns when closing an Investigation.
+export type InvestigationFindingType =
+  | "CONFIRMED_NORMAL" // 정상 거래로 확인
+  | "NEEDS_FURTHER_VERIFICATION" // 추가 확인 필요
+  | "POTENTIAL_IMPAIRMENT_RISK" // 잠재 부실 위험
+  | "SUSPECTED_FRAUD" // 사기/거래 실재성 의심
+  | "EXTERNAL_EVENT_IMPACT"; // 외부 이벤트 영향
+
 export interface Investigation {
   id: string;
   companyId: string;
@@ -174,8 +186,11 @@ export interface Investigation {
   createdBy: string;
   status: InvestigationStatus;
   reason: string;
-  findings?: string;
+  findingType?: InvestigationFindingType;
+  findings?: string; // free-text finding detail
+  finalJudgment?: string; // required when closing
   closedDate?: string;
+  closedBy?: string;
 }
 
 export type ActionType =

@@ -3,12 +3,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { createActionAction } from "@/app/investigation/[companyId]/actions";
 import type { ActionType } from "@/lib/types";
+import type { Dictionary } from "@/lib/i18n/translations";
 
-const ACTION_TYPES: { type: ActionType; label: string }[] = [
-  { type: "SITE_VISIT_REQUEST", label: "현장 확인 요청" },
-  { type: "CREDIT_REVIEW_REQUEST", label: "심사부 검토 요청" },
-  { type: "WATCHLIST_REGISTER", label: "Watch List 등록" },
-  { type: "INVESTIGATION_CREATE", label: "Investigation 생성" },
+type ActionDict = Dictionary["investigation"]["action"];
+
+const ACTION_TYPES: ActionType[] = [
+  "SITE_VISIT_REQUEST",
+  "CREDIT_REVIEW_REQUEST",
+  "WATCHLIST_REGISTER",
+  "INVESTIGATION_CREATE",
 ];
 
 // A single form, four submit buttons. Each button binds its own companyId +
@@ -18,22 +21,22 @@ const ACTION_TYPES: { type: ActionType; label: string }[] = [
 // progressive-enhancement encoding on formAction, so binding is required
 // here, not optional. The server action redirects back with `?created=`
 // on success, which the page reads to show a confirmation banner.
-export function ActionButtons({ companyId }: { companyId: string }) {
+export function ActionButtons({ companyId, t }: { companyId: string; t: ActionDict }) {
   return (
     <form className="space-y-3">
       <div className="space-y-1">
-        <Label htmlFor="action-note">비고 (선택)</Label>
-        <Textarea id="action-note" name="note" placeholder="Action 관련 참고사항" />
+        <Label htmlFor="action-note">{t.noteLabel}</Label>
+        <Textarea id="action-note" name="note" placeholder={t.notePlaceholder} />
       </div>
       <div className="flex flex-wrap gap-2">
-        {ACTION_TYPES.map((a) => (
+        {ACTION_TYPES.map((type) => (
           <Button
-            key={a.type}
+            key={type}
             type="submit"
-            formAction={createActionAction.bind(null, companyId, a.type)}
+            formAction={createActionAction.bind(null, companyId, type)}
             variant="outline"
           >
-            {a.label}
+            {t.types[type]}
           </Button>
         ))}
       </div>

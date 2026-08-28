@@ -63,6 +63,39 @@ const scenarioCounterparties: Counterparty[] = [
 ];
 
 export const genericCounterparties = generateGenericCounterparties();
+
+// --- One deliberate, non-random organic case ------------------------------
+// The portfolio-wide Hidden-Risk scan (lib/riskSignals.ts / lib/riskScan.ts)
+// runs the exact same detection logic against every borrower, including the
+// 30 "generic" ones above — most turn up clean, a few turn up borderline
+// purely by chance. To guarantee the demo reliably shows at least one
+// clean, single-signal "hidden risk" case beyond the scripted 세림테크
+// group — proving the detector generalizes rather than only ever finding
+// the one pre-existing narrative — 미래푸드(CMP-013)'s largest counterparty
+// concentration is nudged from its randomly-generated 11% to 45%. Volume is
+// recomputed with the exact same annualRevenue × concentration formula used
+// for every other counterparty above, so the two figures stay consistent.
+// No tag, no special-case branch anywhere else — the scan finds this purely
+// because the concentration number itself is now >= 35%.
+const ORGANIC_CONCENTRATION_CASE = {
+  companyId: "CMP-013",
+  counterpartyName: "대신상사",
+  concentrationPct: 45,
+};
+
+const organicTarget = genericCounterparties.find(
+  (c) =>
+    c.companyId === ORGANIC_CONCENTRATION_CASE.companyId &&
+    c.counterpartyName === ORGANIC_CONCENTRATION_CASE.counterpartyName
+);
+if (organicTarget) {
+  const annualRevenue = latestAnnualizedRevenue(organicTarget.companyId);
+  organicTarget.concentrationPct = ORGANIC_CONCENTRATION_CASE.concentrationPct;
+  organicTarget.annualTransactionVolume = Math.round(
+    (annualRevenue * ORGANIC_CONCENTRATION_CASE.concentrationPct) / 100
+  );
+}
+
 export const counterparties: Counterparty[] = [
   ...genericCounterparties,
   ...scenarioCounterparties,

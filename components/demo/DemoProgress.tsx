@@ -1,19 +1,29 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { DEMO_STEPS } from "@/lib/demoSteps";
 
 // A pure, server-rendered progress rail — no client JS / scroll-spy.
 // `active` marks which step(s) belong to the current page so a presenter
 // always knows "where am I in the story." Styled as a plain numbered
 // sequence (like a document review checklist), not a colorful stepper —
 // this sits inside a real-looking risk system, not a product tour.
-export function DemoProgress({ active }: { active: number[] }) {
+//
+// `steps` is passed in (translated) by the caller rather than imported
+// here, so this stays a plain Server Component — the caller already has
+// the server-resolved translation dictionary.
+export function DemoProgress({
+  active,
+  steps,
+}: {
+  active: number[];
+  steps: readonly string[];
+}) {
   return (
     <div className="flex items-center gap-0 overflow-x-auto border-b py-2 text-xs">
-      {DEMO_STEPS.map((s, i) => {
-        const isActive = active.includes(s.n);
+      {steps.map((label, i) => {
+        const n = i + 1;
+        const isActive = active.includes(n);
         return (
-          <div key={s.n} className="flex items-center">
+          <div key={n} className="flex items-center">
             {i > 0 && <span className="mx-2 h-px w-3 bg-border" />}
             <span
               className={cn(
@@ -27,9 +37,9 @@ export function DemoProgress({ active }: { active: number[] }) {
                   isActive ? "border-foreground bg-foreground text-background" : "border-border"
                 )}
               >
-                {s.n}
+                {n}
               </span>
-              {s.label}
+              {label}
             </span>
           </div>
         );
@@ -46,13 +56,15 @@ export function StepBadge({ n }: { n: number }) {
   );
 }
 
+// `label` is the fully-composed, already-translated string (e.g. "다음: ... →"
+// / "Next: ... →") — this component stays presentation-only.
 export function NextStepLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
       className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
     >
-      다음: {label} →
+      {label}
     </Link>
   );
 }

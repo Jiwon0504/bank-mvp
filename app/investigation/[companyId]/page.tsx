@@ -15,13 +15,15 @@ import { RiskLevelBadge } from "@/components/shared/RiskLevelBadge";
 import { RiskGraphSimple } from "@/components/risk-graph/RiskGraphSimple";
 import { HumanReviewForm } from "@/components/investigation/HumanReviewForm";
 import { ActionButtons } from "@/components/investigation/ActionButtons";
+import { InvestigationWorkflow } from "@/components/investigation/InvestigationWorkflow";
+import { AiAssistant } from "@/components/investigation/AiAssistant";
 import { ExternalEventCard } from "@/components/investigation/ExternalEventCard";
 import {
   RiskTimelineInteractive,
   type TimelineItem,
 } from "@/components/investigation/RiskTimelineInteractive";
 import { DemoProgress, StepBadge, NextStepLink } from "@/components/demo/DemoProgress";
-import { startInvestigationAction } from "./actions";
+import { startInvestigationAction, updateActionStatusAction } from "./actions";
 import { getCompanyById, getCompanyExposure } from "@/lib/repository/companyRepository";
 import { getRelatedCompanyIds } from "@/lib/repository/relationshipRepository";
 import {
@@ -37,19 +39,16 @@ import {
 } from "@/lib/repository/exposureRepository";
 import { generateInvestigationSummary } from "@/lib/riskAnalysis";
 import { formatEok } from "@/lib/format";
+import { getServerLocale } from "@/lib/i18n/getLocale";
+import { translations } from "@/lib/i18n/translations";
+import { scanCompany } from "@/lib/riskScan";
+import type { ActionStatus } from "@/lib/types";
 
-const DECISION_LABELS: Record<string, string> = {
-  NEEDS_VERIFICATION: "확인 필요",
-  WATCHLIST: "Watch List 등록",
-  MAINTAIN_NORMAL: "정상 유지",
-  CREDIT_REVIEW: "심사부 검토",
-};
-
-const ACTION_TYPE_LABELS: Record<string, string> = {
-  SITE_VISIT_REQUEST: "현장 확인 요청",
-  CREDIT_REVIEW_REQUEST: "심사부 검토 요청",
-  WATCHLIST_REGISTER: "Watch List 등록",
-  INVESTIGATION_CREATE: "Investigation 생성",
+// PENDING -> IN_PROGRESS -> DONE, one step at a time; DONE has no next step.
+const NEXT_ACTION_STATUS: Record<ActionStatus, ActionStatus | undefined> = {
+  PENDING: "IN_PROGRESS",
+  IN_PROGRESS: "DONE",
+  DONE: undefined,
 };
 
 function SummarySection({ title, items }: { title: string; items: string[] }) {
@@ -70,14 +69,17 @@ export default async function InvestigationPage({
   searchParams,
 }: {
   params: Promise<{ companyId: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; investigationStatus?: string; actionUpdated?: string }>;
 }) {
   const { companyId } = await params;
-  const { created } = await searchParams;
+  const { created, investigationStatus, actionUpdated } = await searchParams;
+  const locale = await getServerLocale();
+  const t = translations[locale];
   const company = getCompanyById(companyId);
   if (!company) notFound();
 
-  const isHiddenRiskCase = company.tags?.includes("HIDDEN_RISK_CASE") ?? false;
+  // Computed, not tagged — same uniform portfolio scan as the Dashboard.
+  const isHiddenRiskCase = scanCompany(company).isPriorityCandidate;
 
   const summary = generateInvestigationSummary(companyId);
   const timeline = getRiskTimeline(companyId);
@@ -107,22 +109,20 @@ export default async function InvestigationPage({
 
   return (
     <div className="flex flex-col gap-6">
-      {isHiddenRiskCase && <DemoProgress active={[5, 6, 7, 8, 9]} />}
+      {isHiddenRiskCase && <DemoProgress active={[5, 6, 7, 8, 9]} steps={t.demoSteps} />}
 
       <div className="flex items-start justify-between gap-4 border-b pb-4">
         <div>
           <p className="text-sm text-muted-foreground">
             <Link href={`/companies/${company.id}`} className="hover:underline">
-              ← {company.name}
+              {t.investigation.breadcrumbBack} {company.name}
             </Link>
           </p>
-          <h1 className="text-xl font-semibold tracking-tight">Risk Investigation</h1>
-          <p className="text-sm text-muted-foreground">
-            &quot;정상 여신인데 왜 위험한가?&quot; — 연결된 데이터 소스를 종합한 근거 기반 설명입니다.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">{t.investigation.title}</h1>
+          <p className="text-sm text-muted-foreground">{t.investigation.subtitleQuote}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Model Risk</span>
+          <span className="text-sm text-muted-foreground">{t.investigation.modelRisk}</span>
           <RiskLevelBadge level={company.currentEwsRiskLevel} />
         </div>
       </div>
@@ -131,19 +131,17 @@ export default async function InvestigationPage({
         <CardHeader>
           <CardTitle className="flex items-center text-sm font-medium">
             {isHiddenRiskCase && <StepBadge n={5} />}
-            Risk Signal Timeline
+            {t.investigation.timeline.title}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {timelineItems.length > 0 ? (
-            <RiskTimelineInteractive items={timelineItems} />
+            <RiskTimelineInteractive items={timelineItems} t={t.investigation.timeline} />
           ) : (
-            <p className="text-sm text-muted-foreground">
-              이 차주에 대한 Risk Signal Timeline 데이터가 없습니다.
-            </p>
+            <p className="text-sm text-muted-foreground">{t.investigation.timeline.noData}</p>
           )}
           {isHiddenRiskCase && (
-            <NextStepLink href="#graph" label="관계사·거래처 관계망 Graph 확인하기" />
+            <NextStepLink href="#graph" label={t.investigation.timeline.nextLinkLabel} />
           )}
         </CardContent>
       </Card>
@@ -152,24 +150,24 @@ export default async function InvestigationPage({
         <CardHeader>
           <CardTitle className="flex items-center text-sm font-medium">
             {isHiddenRiskCase && <StepBadge n={6} />}
-            Risk Propagation Graph
+            {t.investigation.graph.title}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <RiskGraphSimple companyId={companyId} />
+          <RiskGraphSimple companyId={companyId} t={t.investigation.graph} common={t.common} />
           {isHiddenRiskCase && (
-            <NextStepLink href="#external-event" label="이 관계망에 영향을 준 External Event 확인하기" />
+            <NextStepLink href="#external-event" label={t.investigation.graph.nextLinkLabel} />
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Cross-Institution Exposure (참고)</CardTitle>
+          <CardTitle className="text-sm font-medium">{t.investigation.crossExposure.title}</CardTitle>
           <p className="text-xs text-muted-foreground">
             {company.name}
-            {relatedIds.length > 0 ? " 및 관계사 그룹" : ""} 기준, 금융권 전체(가상) Exposure —
-            실제 금융기관명이 아닌 데모용 명칭(금융기관 A/B/C) 사용
+            {relatedIds.length > 0 ? (locale === "ko" ? " 및 관계사 그룹" : " and related-company group") : ""}{" "}
+            {t.investigation.crossExposure.subtitle}
           </p>
         </CardHeader>
         <CardContent>
@@ -178,10 +176,12 @@ export default async function InvestigationPage({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>기업</TableHead>
-                    <TableHead>금융기관</TableHead>
-                    <TableHead className="text-right">Exposure</TableHead>
-                    <TableHead>기준일</TableHead>
+                    <TableHead>{t.investigation.crossExposure.columns.company}</TableHead>
+                    <TableHead>{t.investigation.crossExposure.columns.institution}</TableHead>
+                    <TableHead className="text-right">
+                      {t.investigation.crossExposure.columns.exposure}
+                    </TableHead>
+                    <TableHead>{t.investigation.crossExposure.columns.asOf}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -195,7 +195,7 @@ export default async function InvestigationPage({
                           {inst?.name ?? e.institutionId}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatEok(e.exposureAmount)}
+                          {formatEok(e.exposureAmount, locale)}
                         </TableCell>
                         <TableCell className="text-muted-foreground">{e.asOfDate}</TableCell>
                       </TableRow>
@@ -204,12 +204,12 @@ export default async function InvestigationPage({
                 </TableBody>
               </Table>
               <p className="mt-3 flex items-center justify-between text-sm font-medium">
-                <span>그룹 전체 금융권 Exposure 합계</span>
-                <span className="tabular-nums">{formatEok(totalGroupExposure)}</span>
+                <span>{t.investigation.crossExposure.totalLabel}</span>
+                <span className="tabular-nums">{formatEok(totalGroupExposure, locale)}</span>
               </p>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">Cross-institution exposure 데이터 없음.</p>
+            <p className="text-sm text-muted-foreground">{t.investigation.crossExposure.noData}</p>
           )}
         </CardContent>
       </Card>
@@ -218,13 +218,13 @@ export default async function InvestigationPage({
         <CardHeader>
           <CardTitle className="flex items-center text-sm font-medium">
             {isHiddenRiskCase && <StepBadge n={7} />}
-            External Event 연결
+            {t.investigation.externalEvent.title}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ExternalEventCard companyId={companyId} />
+          <ExternalEventCard companyId={companyId} t={t.investigation.externalEvent} common={t.common} />
           {isHiddenRiskCase && (
-            <NextStepLink href="#ai-summary" label="AI Investigation Summary로 전체 근거 종합해서 보기" />
+            <NextStepLink href="#ai-summary" label={t.investigation.externalEvent.nextLinkLabel} />
           )}
         </CardContent>
       </Card>
@@ -235,52 +235,87 @@ export default async function InvestigationPage({
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center text-sm font-medium">
                 {isHiddenRiskCase && <StepBadge n={8} />}
-                AI Investigation Summary
+                {t.investigation.summary.title}
               </CardTitle>
               <Badge variant="outline" className="font-normal text-muted-foreground">
-                System-generated reference
+                {t.investigation.summary.referenceTag}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">
-              규칙 기반 자동 요약이며(현재 버전은 AI 생성이 아닌 결정론적 로직, 향후 Claude API로
-              교체 예정), 최종 판단은 아래 담당자 기록을 따릅니다. &quot;위험하다&quot;가 아니라
-              확인이 필요한 신호만 표현합니다.
-            </p>
+            <p className="text-xs text-muted-foreground">{t.investigation.summary.disclaimer}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-md border border-foreground/20 bg-background p-3">
-              <p className="mb-1 text-sm font-semibold">현재 가장 먼저 확인해야 할 사항</p>
+              <p className="mb-1 text-sm font-semibold">
+                {t.investigation.summary.priorityQuestionsTitle}
+              </p>
               <ul className="list-decimal space-y-1 pl-5 text-sm">
                 {summary.priorityQuestions.map((q, i) => (
                   <li key={i}>{q}</li>
                 ))}
               </ul>
             </div>
-            <SummarySection title="1. 현재 상태" items={summary.currentStatus} />
-            <SummarySection title="2. 발견된 위험 신호" items={summary.riskSignalsFound} />
-            <SummarySection title="3. 서로 연결되는 근거" items={summary.connectingEvidence} />
-            <SummarySection title="4. 아직 확인되지 않은 사항" items={summary.unverifiedItems} />
-            <SummarySection title="5. 추가 조사가 필요한 이유" items={summary.whyFurtherReviewNeeded} />
-            <SummarySection title="6. 담당자가 검토할 수 있는 Action" items={summary.suggestedActions} />
+            <SummarySection title={t.investigation.summary.sectionTitles[0]} items={summary.currentStatus} />
+            <SummarySection title={t.investigation.summary.sectionTitles[1]} items={summary.riskSignalsFound} />
+            <SummarySection title={t.investigation.summary.sectionTitles[2]} items={summary.connectingEvidence} />
+            <SummarySection title={t.investigation.summary.sectionTitles[3]} items={summary.unverifiedItems} />
+            <SummarySection
+              title={t.investigation.summary.sectionTitles[4]}
+              items={summary.whyFurtherReviewNeeded}
+            />
+            <SummarySection title={t.investigation.summary.sectionTitles[5]} items={summary.suggestedActions} />
             {isHiddenRiskCase && (
-              <NextStepLink href="#action" label="담당자 판단 기록하고 Action 선택하기" />
+              <NextStepLink href="#action" label={t.investigation.summary.nextLinkLabel} />
             )}
           </CardContent>
         </Card>
       )}
 
+      <Card id="ai-assistant">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">{t.investigation.assistant.title}</CardTitle>
+            <Badge variant="outline" className="font-normal text-muted-foreground">
+              {t.investigation.assistant.referenceTag}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">{t.investigation.assistant.disclaimer}</p>
+        </CardHeader>
+        <CardContent>
+          <AiAssistant companyId={companyId} locale={locale} t={t.investigation.assistant} />
+        </CardContent>
+      </Card>
+
       <div id="action" className="flex items-center gap-2 border-b pb-2">
         {isHiddenRiskCase && <StepBadge n={9} />}
-        <h2 className="text-base font-semibold tracking-tight">담당자의 판단과 Action</h2>
-        <span className="text-xs text-muted-foreground">— 이 기록이 공식 결정입니다</span>
+        <h2 className="text-base font-semibold tracking-tight">{t.investigation.actionHeading.title}</h2>
+        <span className="text-xs text-muted-foreground">{t.investigation.actionHeading.subtitle}</span>
       </div>
 
       <Card className="border-foreground/20">
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Human-in-the-loop 판단</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            EWS Model Risk 및 위 참고 요약과 무관하게, 담당자의 독립적인 판단을 기록합니다.
-          </p>
+          <CardTitle className="text-sm font-medium">{t.investigation.workflow.title}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {investigationStatus && (
+            <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              {t.investigation.workflow.updatedBannerPrefix}
+              {investigationStatus}
+            </p>
+          )}
+          <InvestigationWorkflow
+            companyId={companyId}
+            investigation={latestInvestigation}
+            humanReviews={humanReviews}
+            t={t.investigation.workflow}
+            decisionLabels={t.investigation.humanReview.decisions}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-foreground/20">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">{t.investigation.humanReview.title}</CardTitle>
+          <p className="text-xs text-muted-foreground">{t.investigation.humanReview.subtitle}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {humanReviews.length > 0 && (
@@ -288,7 +323,9 @@ export default async function InvestigationPage({
               {humanReviews.map((r) => (
                 <li key={r.id} className="rounded-md border p-3 text-sm">
                   <div className="flex items-center justify-between">
-                    <Badge className="font-normal">{DECISION_LABELS[r.decision] ?? r.decision}</Badge>
+                    <Badge className="font-normal">
+                      {t.investigation.humanReview.decisions[r.decision] ?? r.decision}
+                    </Badge>
                     <span className="text-xs text-muted-foreground">
                       {r.authorName} · {r.createdDate}
                     </span>
@@ -301,10 +338,14 @@ export default async function InvestigationPage({
           )}
 
           {latestInvestigation ? (
-            <HumanReviewForm companyId={companyId} investigationId={latestInvestigation.id} />
+            <HumanReviewForm
+              companyId={companyId}
+              investigationId={latestInvestigation.id}
+              t={t.investigation.humanReview}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">
-              Human-in-the-loop 판단을 기록하려면 먼저 Investigation을 개설하세요 (아래).
+              {t.investigation.humanReview.noInvestigationYet}
             </p>
           )}
         </CardContent>
@@ -312,44 +353,63 @@ export default async function InvestigationPage({
 
       <Card className="border-foreground/20">
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Action</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            판단을 실행 가능한 조치로 연결합니다.
-          </p>
+          <CardTitle className="text-sm font-medium">{t.investigation.action.title}</CardTitle>
+          <p className="text-xs text-muted-foreground">{t.investigation.action.subtitle}</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {created && (
-            <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
-              ✓ Action 생성됨 — {ACTION_TYPE_LABELS[created] ?? created}
+            <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              {t.investigation.action.createdBannerPrefix}
+              {t.investigation.action.types[created as keyof typeof t.investigation.action.types] ?? created}
+            </p>
+          )}
+          {actionUpdated && (
+            <p className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              {t.investigation.action.updatedBannerPrefix}
+              {actionUpdated}
             </p>
           )}
           {actions.length > 0 ? (
             <ul className="space-y-2">
-              {actions.map((a) => (
-                <li key={a.id} className="rounded-md border p-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
-                    <Badge variant="outline">{a.status}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {a.createdDate} · {a.createdBy}
-                  </p>
-                  {a.note && <p className="mt-1">{a.note}</p>}
-                </li>
-              ))}
+              {actions.map((a) => {
+                const nextStatus = NEXT_ACTION_STATUS[a.status];
+                const nextLabel =
+                  a.status === "PENDING" ? t.investigation.action.statusStart : t.investigation.action.statusComplete;
+                return (
+                  <li key={a.id} className="rounded-md border p-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{t.investigation.action.types[a.type] ?? a.type}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{a.status}</Badge>
+                        {nextStatus && (
+                          <form action={updateActionStatusAction.bind(null, companyId, a.id, nextStatus)}>
+                            <Button type="submit" variant="ghost" size="sm">
+                              {nextLabel}
+                            </Button>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {a.createdDate} · {a.createdBy}
+                    </p>
+                    {a.note && <p className="mt-1">{a.note}</p>}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">생성된 Action이 없습니다.</p>
+            <p className="text-sm text-muted-foreground">{t.investigation.action.noActions}</p>
           )}
           <div className="border-t pt-3">
-            <ActionButtons companyId={companyId} />
+            <ActionButtons companyId={companyId} t={t.investigation.action} />
           </div>
         </CardContent>
       </Card>
 
       <details className="rounded-md border">
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground">
-          Investigation 관리 (개설 이력 / 새 Investigation 개설)
+          {t.investigation.manage.summary}
         </summary>
         <div className="space-y-3 border-t px-4 py-3">
           {investigations.length > 0 ? (
@@ -368,7 +428,7 @@ export default async function InvestigationPage({
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">개설된 Investigation이 없습니다.</p>
+            <p className="text-sm text-muted-foreground">{t.investigation.manage.noInvestigations}</p>
           )}
 
           <form action={startInvestigationAction} className="space-y-2 border-t pt-3">
@@ -379,7 +439,7 @@ export default async function InvestigationPage({
               value="담당자 검토 결과 연결 리스크 검증을 위한 Investigation 개설"
             />
             <Button type="submit" variant="secondary" size="sm">
-              + 새 Investigation 개설
+              {t.investigation.manage.newInvestigation}
             </Button>
           </form>
         </div>

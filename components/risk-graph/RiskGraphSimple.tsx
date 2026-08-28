@@ -13,7 +13,12 @@ import {
   getRelatedCompanies,
   getCounterpartiesByCompany,
 } from "@/lib/repository/relationshipRepository";
+import { useLanguage } from "@/lib/i18n/LanguageProvider";
 import type { Company } from "@/lib/types";
+import type { Dictionary, Locale } from "@/lib/i18n/translations";
+
+type GraphDict = Dictionary["investigation"]["graph"];
+type CommonDict = Dictionary["common"];
 
 interface NodeInfo {
   company: Company;
@@ -52,7 +57,7 @@ function GraphNode({
   );
 }
 
-function level1For(companyId: string): NodeInfo[] {
+function level1For(companyId: string, t: GraphDict, common: CommonDict, locale: Locale): NodeInfo[] {
   const relations = getRelatedCompanies(companyId);
   const relatedCompanies = relations
     .map((r) => {
@@ -60,9 +65,9 @@ function level1For(companyId: string): NodeInfo[] {
       const company = getCompanyById(otherId);
       if (!company) return null;
       const detail = r.ownershipPct
-        ? `${r.relationType} · 지분 ${r.ownershipPct}%`
+        ? `${r.relationType} · ${t.ownershipLabel} ${r.ownershipPct}%`
         : r.relationType;
-      return { company, role: "관계사", relationDetail: detail };
+      return { company, role: common.relatedCompany, relationDetail: detail };
     })
     .filter((n): n is NodeInfo => Boolean(n));
 
@@ -71,12 +76,13 @@ function level1For(companyId: string): NodeInfo[] {
     .map((c) => {
       const company = getCompanyById(c.counterpartyCompanyId as string);
       if (!company) return null;
-      const roleLabel = c.role === "CUSTOMER" ? "고객" : "공급처";
+      const roleLabel = c.role === "CUSTOMER" ? common.customer : common.supplier;
       return {
         company,
-        role: "주요 거래처",
-        relationDetail: `${roleLabel} · 집중도 ${c.concentrationPct}% · 연 거래액 ${formatEok(
-          c.annualTransactionVolume
+        role: common.counterparty,
+        relationDetail: `${roleLabel} · ${c.concentrationPct}% · ${t.annualVolumeLabel} ${formatEok(
+          c.annualTransactionVolume,
+          locale
         )}`,
       };
     })
@@ -91,22 +97,29 @@ function level1For(companyId: string): NodeInfo[] {
 // generic graph library would for a 3-4 node case. Nodes are click targets
 // (not links) so selecting one shows relation/Exposure/Risk detail inline
 // without leaving the Investigation view.
-export function RiskGraphSimple({ companyId }: { companyId: string }) {
+export function RiskGraphSimple({
+  companyId,
+  t,
+  common,
+}: {
+  companyId: string;
+  t: GraphDict;
+  common: CommonDict;
+}) {
   const [selected, setSelected] = useState<NodeInfo | null>(null);
+  const { locale } = useLanguage();
 
   const root = getCompanyById(companyId);
   if (!root) return null;
 
-  const level1 = level1For(companyId);
+  const level1 = level1For(companyId, t, common, locale);
   const seen = new Set([companyId, ...level1.map((l) => l.company.id)]);
 
   if (level1.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">연결된 관계사/거래처 데이터가 없습니다.</p>
-    );
+    return <p className="text-sm text-muted-foreground">{t.noData}</p>;
   }
 
-  const rootInfo: NodeInfo = { company: root, role: "차주 (중심)", relationDetail: "본인" };
+  const rootInfo: NodeInfo = { company: root, role: t.rootRole, relationDetail: common.self };
 
   return (
     <div className="space-y-3">
@@ -117,7 +130,9 @@ export function RiskGraphSimple({ companyId }: { companyId: string }) {
       />
       <div className="ml-6 space-y-4 border-l-2 border-dashed border-muted-foreground/30 pl-6">
         {level1.map((info) => {
-          const level2 = level1For(info.company.id).filter((l) => !seen.has(l.company.id));
+          const level2 = level1For(info.company.id, t, common, locale).filter(
+            (l) => !seen.has(l.company.id)
+          );
           return (
             <div key={info.company.id} className="space-y-2">
               <GraphNode
@@ -130,7 +145,7 @@ export function RiskGraphSimple({ companyId }: { companyId: string }) {
                   {level2.map((l) => (
                     <GraphNode
                       key={l.company.id}
-                      info={{ ...l, role: `2차 ${l.role}` }}
+                      info={{ ...l, role: `${t.secondaryPrefix}${l.role}` }}
                       selected={selected?.company.id === l.company.id}
                       onSelect={() => setSelected(l)}
                     />
@@ -150,29 +165,29 @@ export function RiskGraphSimple({ companyId }: { companyId: string }) {
               href={`/companies/${selected.company.id}`}
               className="text-xs font-medium hover:underline"
             >
-              전체 프로필 보기 →
+              {t.viewProfile}
             </Link>
           </div>
           <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div>
-              <dt className="text-xs text-muted-foreground">관계 유형</dt>
+              <dt className="text-xs text-muted-foreground">{t.relationType}</dt>
               <dd className="font-medium">{selected.relationDetail}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">당행 Exposure</dt>
+              <dt className="text-xs text-muted-foreground">{t.exposureLabel}</dt>
               <dd className="font-medium tabular-nums">
-                {formatEok(getCompanyExposure(selected.company.id))}
+                {formatEok(getCompanyExposure(selected.company.id), locale)}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">EWS Risk Score</dt>
+              <dt className="text-xs text-muted-foreground">{t.riskScore}</dt>
               <dd className="flex items-center gap-1.5 font-medium tabular-nums">
                 {selected.company.currentEwsRiskScore}
                 <RiskLevelBadge level={selected.company.currentEwsRiskLevel} />
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">산업 / 지역</dt>
+              <dt className="text-xs text-muted-foreground">{t.industryRegion}</dt>
               <dd className="font-medium">
                 {selected.company.industry} · {selected.company.region}
               </dd>
